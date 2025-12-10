@@ -70,7 +70,7 @@ export default async function handler(req, res) {
     // 4) OPENAI API VOLÁNÍ S TVÝMI SYSTEM INSTRUCTIONS
     //
     const completion = await client.chat.completions.create({
-      model: "gpt-5-nano",
+      model: "gpt-5-mini",
       messages: [
         { role: "system", content: SYSTEM_INSTRUCTIONS },
         { role: "user", content: JSON.stringify({ matchJson: jsonData }) }
