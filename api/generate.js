@@ -8,7 +8,9 @@ const SYSTEM_INSTRUCTIONS = process.env.MATCH_GPT_INSTRUCTIONS;
 
 export default async function handler(req, res) {
   try {
-    // FORM page
+    //
+    // 1) FORMULÁŘ — pokud není parametr URL
+    //
     if (!req.query.url) {
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       return res.status(200).send(`
@@ -17,13 +19,18 @@ export default async function handler(req, res) {
             <meta charset="utf-8" />
             <title>Generátor článků</title>
             <style>
-              body { font-family: -apple-system, sans-serif; padding:40px; max-width:700px; margin:auto; }
+              body { font-family:-apple-system, sans-serif; padding:40px; max-width:700px; margin:auto; }
               input { width:100%; padding:12px; font-size:16px; border-radius:8px; border:1px solid #ccc; margin-top:8px; }
               button { margin-top:20px; padding:12px 20px; font-size:16px; background:#0070f3; border:none; color:white; border-radius:8px; cursor:pointer; }
+              button:hover { background:#0059c1; }
+              h1 { margin-bottom:10px; }
             </style>
           </head>
           <body>
-            <h1>Generátor článku</h1>
+            <h1>Generátor článku ze zápasu</h1>
+            <p>Vlož URL zápasu z FIBA Live Stats:</p>
+            <code>https://fibalivestats.dcd.shared.geniussports.com/u/CBFFE/2779305/bs.html</code>
+
             <form method="GET" action="">
               <input name="url" placeholder="Sem vlož URL zápasu…" required />
               <button type="submit">Vygenerovat článek</button>
@@ -33,24 +40,35 @@ export default async function handler(req, res) {
       `);
     }
 
+    //
+    // 2) EXTRAKCE ID ZÁPASU Z URL
+    //
     const { url } = req.query;
 
-    // EXTRACT MATCH ID
     const idMatch = url.match(/\/(\d+)\//);
-    if (!idMatch) return res.status(400).send("Nepodařilo se získat ID zápasu.");
+    if (!idMatch) {
+      return res.status(400).send("Nepodařilo se získat ID zápasu z URL.");
+    }
+
     const matchId = idMatch[1];
 
-    // JSON URL
+    //
+    // 3) STAŽENÍ JSONU Z FIBA API
+    //
     const jsonUrl = `https://fibalivestats.dcd.shared.geniussports.com/data/${matchId}/data.json`;
 
-    // DOWNLOAD JSON
     const jsonResponse = await fetch(jsonUrl);
     if (!jsonResponse.ok) {
-      return res.status(500).send(`Nepodařilo se stáhnout JSON (${jsonResponse.status}) z ${jsonUrl}`);
+      return res.status(500).send(
+        `Nepodařilo se stáhnout JSON (${jsonResponse.status}) z ${jsonUrl}`
+      );
     }
+
     const jsonData = await jsonResponse.json();
 
-    // CALL OPENAI
+    //
+    // 4) OPENAI API VOLÁNÍ S TVÝMI SYSTEM INSTRUCTIONS
+    //
     const completion = await client.chat.completions.create({
       model: "gpt-5.1",
       messages: [
@@ -59,7 +77,9 @@ export default async function handler(req, res) {
       ]
     });
 
-    // OUTPUT FROM MODEL — expecting JSON
+    //
+    // 5) PARSOVÁNÍ JSON OD MODELU
+    //
     let parsed;
     try {
       parsed = JSON.parse(completion.choices[0].message.content);
@@ -67,10 +87,25 @@ export default async function handler(req, res) {
       return res.status(500).send("Model nevrátil validní JSON: " + err.message);
     }
 
-    const { titulek, shrnuti, clanek, clanek_verze_2 } = parsed;
+    // OČEKÁVANÁ TVOJE STRUKTURA:
+    //
+    // {
+    //   "hlavni_clanek": "...",
+    //   "titulek": "...",
+    //   "shrnuti": "...",
+    //   "odlehceny_clanek": "..."
+    // }
 
-    // HTML OUTPUT
+    const titulek = parsed.titulek || "Bez titulku";
+    const shrnuti = parsed.shrnuti || "Bez shrnutí";
+    const hlavni = parsed.hlavni_clanek || "Hlavní článek nebyl vygenerován.";
+    const odlehceny = parsed.odlehceny_clanek || "Odlehčený článek nebyl vygenerován.";
+
+    //
+    // 6) HTML VÝSTUP
+    //
     res.setHeader("Content-Type", "text/html; charset=utf-8");
+
     return res.status(200).send(`
       <html>
         <head>
@@ -80,7 +115,7 @@ export default async function handler(req, res) {
             body { font-family:-apple-system, sans-serif; padding:40px; max-width:800px; margin:auto; line-height:1.6; }
             section { margin-bottom:40px; }
             h2 { margin-top:20px; }
-            hr { margin:40px 0; }
+            pre { white-space:pre-wrap; }
           </style>
         </head>
         <body>
@@ -90,24 +125,24 @@ export default async function handler(req, res) {
 
           <section>
             <h2>1) Shrnutí</h2>
-            <p>${shrnuti.replace(/\n/g, "<br>")}</p>
+            <pre>${shrnuti}</pre>
           </section>
 
           <section>
             <h2>2) Hlavní článek</h2>
-            <p>${clanek.replace(/\n/g, "<br>")}</p>
+            <pre>${hlavni}</pre>
           </section>
 
           <section>
-            <h2>3) Druhá verze článku</h2>
-            <p>${clanek_verze_2.replace(/\n/g, "<br>")}</p>
+            <h2>3) Odlehčený článek</h2>
+            <pre>${odlehceny}</pre>
           </section>
         </body>
       </html>
     `);
 
   } catch (error) {
-    console.error(error);
-    res.status(500).send("Chyba: " + error.message);
+    console.error("CHYBA SERVERU:", error);
+    res.status(500).send("Chyba serveru: " + error.message);
   }
 }
