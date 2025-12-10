@@ -1,0 +1,8 @@
+{
+  "name": "match-article-generator",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "openai": "^4.0.0"
+  }
+}
