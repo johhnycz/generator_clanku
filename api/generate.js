@@ -95,7 +95,7 @@ export default async function handler(req, res) {
 
     // 4) Zavolání OpenAI s tvými instrukcemi
     const completion = await client.chat.completions.create({
-      model: "gpt-4.1-mini",
+      model: "gpt-5.1",
       messages: [
         {
           role: "system",
